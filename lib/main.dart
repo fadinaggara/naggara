@@ -4,8 +4,15 @@ import 'package:scheduladi/pages/main_navigation.dart';
 
 import 'database/database_helper.dart';
 import 'database/database_provider.dart' show DatabaseProvider;
+import 'event_manager.dart';
 
-void main() {
+void main() async {
+  // Ensure Flutter is initialized
+  WidgetsFlutterBinding.ensureInitialized();
+
+  // Initialize database and notifications
+  await EventManager().initializeNotifications();
+
   runApp(
     MultiProvider(
       providers: [

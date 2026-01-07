@@ -4,7 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 
 import '../components/custom_calendar_event_data.dart';
-import '../event-notif.dart';
+import '../event-notif.dart' hide EventNotification;
 
 class AddEventDialog extends StatefulWidget {
   final CustomCalendarEventData? existingEvent;

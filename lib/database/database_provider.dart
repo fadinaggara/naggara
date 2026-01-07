@@ -5,7 +5,7 @@ import 'dart:convert';
 import 'package:path_provider/path_provider.dart';
 import 'package:path/path.dart' as path;
 import '../components/notification_service.dart';
-import '../event-notif.dart';
+import '../event-notif.dart' hide EventNotification;
 import 'database_helper.dart';
 
 class DatabaseProvider extends ChangeNotifier {
@@ -212,7 +212,10 @@ class DatabaseProvider extends ChangeNotifier {
   }
 
   Map<String, dynamic> _eventToMap(CustomCalendarEventData event) {
-    return {
+    final now = DateTime.now().millisecondsSinceEpoch;
+
+    // Basic fields that always exist
+    final map = {
       'id': event.id,
       'date': event.date.millisecondsSinceEpoch,
       'title': event.title ?? '',
@@ -229,9 +232,17 @@ class DatabaseProvider extends ChangeNotifier {
       'notification_enabled': event.notification.enabled ? 1 : 0,
       'notification_minutes_before': event.notification.minutesBefore,
       'notification_custom_message': event.notification.customMessage,
-      'created_at': DateTime.now().millisecondsSinceEpoch,
-      'updated_at': DateTime.now().millisecondsSinceEpoch,
     };
+
+    // Try to add timestamp fields (they may not exist in older schema)
+    try {
+      map['created_at'] = now;
+      map['updated_at'] = now;
+    } catch (e) {
+      print('⚠️ Timestamp fields not available in schema: $e');
+    }
+
+    return map;
   }
 
   Future<List<CustomCalendarEventData>> getUpcomingEvents() async {

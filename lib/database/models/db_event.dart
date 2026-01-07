@@ -1,7 +1,7 @@
 import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:scheduladi/components/custom_calendar_event_data.dart';
-import 'package:scheduladi/event-notif.dart';
+import 'package:scheduladi/event-notif.dart' hide EventNotification;
 
 class DbEvent {
   final String id;

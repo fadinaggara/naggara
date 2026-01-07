@@ -14,99 +14,50 @@ class Homepage extends StatefulWidget {
   final VoidCallback? onEventsChanged;
 
   const Homepage({
-    super.key,
+    Key? key,
     this.controller,
     this.refreshNotifier,
     this.onEventsChanged
-  });
+  }) : super(key: key);
 
   @override
-  State<Homepage> createState() => _HomepageState();
+  HomepageState createState() => HomepageState();
 }
 
-class _HomepageState extends State<Homepage> {
+class HomepageState extends State<Homepage> with WidgetsBindingObserver {
   late EventController _eventController;
   bool _isMonthView = true;
   final ScrollController _monthScrollController = ScrollController();
   final ScrollController _dayScrollController = ScrollController();
   bool _isLoading = false;
+  bool _isRefreshing = false;
+  bool _hasError = false;
+  String? _errorMessage;
   final NotificationService _notificationService = NotificationService();
-  late DatabaseProvider _databaseProvider;
   final EventManager _eventManager = EventManager();
 
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     _eventController = widget.controller ?? EventController();
     _setupScrollListeners();
-    // Load events from database when widget initializes
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      _loadEventsFromDatabase();
-    });
+    _loadEvents();
   }
 
   @override
-  void didChangeDependencies() {
-    super.didChangeDependencies();
-    // Get the DatabaseProvider from context
-    _databaseProvider = Provider.of<DatabaseProvider>(context, listen: false);
-  }
-
-  Future<void> _loadEventsFromDatabase() async {
-    try {
-      // First refresh the provider to load events from database
-      await _databaseProvider.loadEvents();
-
-      // Get events from provider
-      final events = _databaseProvider.events;
-
-      // Clear existing events and add all from database
-      _eventController;
-      if (events.isNotEmpty) {
-        _eventController.addAll(events);
-      }
-
-      print('📊 Loaded ${events.length} events from database');
-    } catch (e) {
-      print('❌ Error loading events from database: $e');
-      // If database fails, load sample events (fallback)
-      _loadSampleEvents();
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) {
+      _refreshEvents();
     }
   }
 
-  void _loadSampleEvents() {
-    final now = DateTime.now();
-    _eventController.addAll([
-      CustomCalendarEventData(
-        id: CustomCalendarEventData.generateId(),
-        date: now.add(const Duration(days: 1)),
-        title: "Client Demo",
-        description: "Showcase new features to client.",
-        startTime: DateTime(now.year, now.month, now.day + 1, 14, 0),
-        endTime: DateTime(now.year, now.month, now.day + 1, 15, 0),
-        color: Colors.deepOrangeAccent,
-        money: 1500.00,
-        diesel: 120.50,
-        additionalItems: [
-          AdditionalItem(name: "Software License", price: 500.00),
-          AdditionalItem(name: "Consulting", price: 300.00),
-        ],
-      ),
-      CustomCalendarEventData(
-        id: CustomCalendarEventData.generateId(),
-        date: now.add(const Duration(days: 2)),
-        title: "Code Review",
-        description: "Review code for the latest PRs.",
-        startTime: DateTime(now.year, now.month, now.day + 2, 9, 30),
-        endTime: DateTime(now.year, now.month, now.day + 2, 10, 30),
-        color: Colors.green,
-        money: 800.00,
-        diesel: 80.25,
-        additionalItems: [
-          AdditionalItem(name: "Code Analysis", price: 200.00),
-        ],
-      ),
-    ]);
+  @override
+  void didUpdateWidget(Homepage oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (widget.refreshNotifier != oldWidget.refreshNotifier) {
+      _refreshEvents();
+    }
   }
 
   void _setupScrollListeners() {
@@ -125,25 +76,100 @@ class _HomepageState extends State<Homepage> {
     });
   }
 
+  Future<void> _loadEvents() async {
+    if (_isLoading) return;
+
+    setState(() {
+      _isLoading = true;
+      _hasError = false;
+      _errorMessage = null;
+    });
+
+    try {
+      await _eventManager.refreshEvents(context, _eventController);
+    } catch (e) {
+      print('Error loading events: $e');
+      setState(() {
+        _hasError = true;
+        _errorMessage = 'Failed to load events: $e';
+      });
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Failed to load events: $e'),
+          backgroundColor: Colors.red,
+          duration: const Duration(seconds: 3),
+        ),
+      );
+    } finally {
+      setState(() {
+        _isLoading = false;
+        _isRefreshing = false;
+      });
+    }
+  }
+
+  Future<void> _refreshEvents() async {
+    if (_isLoading) return;
+
+    setState(() {
+      _isRefreshing = true;
+      _hasError = false;
+      _errorMessage = null;
+    });
+
+    try {
+      await _loadEvents();
+
+      if (!_hasError) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              "Calendar refreshed with ${_eventController.events.length} events",
+              style: const TextStyle(color: Colors.white),
+            ),
+            backgroundColor: Colors.green,
+            duration: const Duration(seconds: 2),
+          ),
+        );
+      }
+    } catch (e) {
+      setState(() {
+        _hasError = true;
+        _errorMessage = 'Refresh failed: $e';
+      });
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Failed to refresh: $e'),
+          backgroundColor: Colors.red,
+          duration: const Duration(seconds: 3),
+        ),
+      );
+    }
+  }
+
   Future<void> _onScrollToRefresh() async {
     if (_isLoading) return;
 
     setState(() {
       _isLoading = true;
+      _hasError = false;
     });
 
-    // Refresh events from database
-    await _loadEventsFromDatabase();
-
-    // Add a small delay to show the refresh animation
-    await Future.delayed(const Duration(milliseconds: 300));
-
-    setState(() {
-      _isLoading = false;
-    });
-
-    // Notify other pages about the refresh
-    _notifyRefresh();
+    try {
+      await _eventManager.refreshEvents(context, _eventController);
+      await Future.delayed(const Duration(milliseconds: 300));
+    } catch (e) {
+      setState(() {
+        _hasError = true;
+      });
+    } finally {
+      setState(() {
+        _isLoading = false;
+      });
+      _notifyRefresh();
+    }
   }
 
   Future<void> _addNewEvent() async {
@@ -155,8 +181,6 @@ class _HomepageState extends State<Homepage> {
     if (newEvent != null) {
       try {
         await _eventManager.addEvent(context, newEvent, _eventController);
-
-        // Notify other pages
         _notifyRefresh();
 
         ScaffoldMessenger.of(context).showSnackBar(
@@ -179,8 +203,6 @@ class _HomepageState extends State<Homepage> {
     if (updatedEvent != null) {
       try {
         await _eventManager.updateEvent(context, event, updatedEvent, _eventController);
-
-        // Notify other pages
         _notifyRefresh();
 
         ScaffoldMessenger.of(context).showSnackBar(
@@ -209,8 +231,6 @@ class _HomepageState extends State<Homepage> {
             onPressed: () async {
               try {
                 await _eventManager.deleteEvent(context, event, _eventController);
-
-                // Notify other pages
                 _notifyRefresh();
 
                 Navigator.pop(context);
@@ -260,13 +280,10 @@ class _HomepageState extends State<Homepage> {
 
     if (events.length == 1) {
       final event = events.first;
-      // Check if it's a CustomCalendarEventData
       if (event is CustomCalendarEventData) {
         _showEventDetail(event);
       } else {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text("Cannot edit this event type")),
-        );
+        _showGenericEventDetail(event);
       }
     } else {
       _showEventsList(events, date);
@@ -274,14 +291,15 @@ class _HomepageState extends State<Homepage> {
   }
 
   void _showEventDetail(CustomCalendarEventData event) {
+    final start = event.startTime ?? event.date;
+    final end = event.endTime ?? event.date;
+
     showModalBottomSheet(
       context: context,
       shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
       ),
       builder: (_) {
-        final start = event.startTime ?? event.date;
-        final end = event.endTime ?? event.date;
         return Padding(
           padding: const EdgeInsets.all(16),
           child: Column(
@@ -343,8 +361,8 @@ class _HomepageState extends State<Homepage> {
                       icon: const Icon(Icons.edit, size: 18),
                       label: const Text("Edit"),
                       onPressed: () {
-                        Navigator.pop(context); // Close detail sheet
-                        _editEvent(event); // Now this will work
+                        Navigator.pop(context);
+                        _editEvent(event);
                       },
                     ),
                   ),
@@ -356,14 +374,54 @@ class _HomepageState extends State<Homepage> {
                       label: const Text("Delete",
                           style: TextStyle(color: Colors.red)),
                       onPressed: () {
-                        Navigator.pop(context); // Close detail sheet
-                        _deleteEvent(event); // Now this will work
+                        Navigator.pop(context);
+                        _deleteEvent(event);
                       },
                     ),
                   ),
                 ],
               ),
               const SizedBox(height: 8),
+              Align(
+                alignment: Alignment.bottomRight,
+                child: TextButton(
+                  onPressed: () => Navigator.pop(context),
+                  child: const Text('Close'),
+                ),
+              ),
+            ],
+          ),
+        );
+      },
+    );
+  }
+
+  void _showGenericEventDetail(CalendarEventData event) {
+    final start = event.startTime ?? event.date;
+    final end = event.endTime ?? event.date;
+
+    showModalBottomSheet(
+      context: context,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
+      ),
+      builder: (_) {
+        return Padding(
+          padding: const EdgeInsets.all(16),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(event.title ?? 'No title',
+                  style: const TextStyle(
+                      fontSize: 20, fontWeight: FontWeight.bold)),
+              const SizedBox(height: 8),
+              if (event.description?.isNotEmpty ?? false)
+                Text(event.description ?? ''),
+              const SizedBox(height: 12),
+              Text('From: ${_formatTime(start)}'),
+              Text('To:   ${_formatTime(end)}'),
+              const SizedBox(height: 12),
               Align(
                 alignment: Alignment.bottomRight,
                 child: TextButton(
@@ -387,13 +445,13 @@ class _HomepageState extends State<Homepage> {
       builder: (_) => _EventList(
         events: events,
         onEdit: (event) {
-          Navigator.pop(context); // Close list sheet
+          Navigator.pop(context);
           if (event is CustomCalendarEventData) {
             _editEvent(event);
           }
         },
         onDelete: (event) {
-          Navigator.pop(context); // Close list sheet
+          Navigator.pop(context);
           if (event is CustomCalendarEventData) {
             _deleteEvent(event);
           }
@@ -422,12 +480,87 @@ class _HomepageState extends State<Homepage> {
             );
           },
         ),
-        if (_isLoading)
-          Positioned(
-            bottom: 16,
-            left: 0,
-            right: 0,
-            child: _buildLoadingIndicator(),
+        if (_isLoading || _isRefreshing)
+          Container(
+            color: Colors.black.withOpacity(0.3),
+            child: Center(
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  const CircularProgressIndicator(),
+                  const SizedBox(height: 16),
+                  Text(
+                    _isRefreshing ? 'Refreshing events...' : 'Loading events...',
+                    style: const TextStyle(
+                      color: Colors.white,
+                      fontSize: 16,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        if (_hasError && !_isLoading && !_isRefreshing)
+          Positioned.fill(
+            child: Container(
+              color: Colors.black.withOpacity(0.3),
+              child: Center(
+                child: Container(
+                  padding: const EdgeInsets.all(20),
+                  margin: const EdgeInsets.all(20),
+                  decoration: BoxDecoration(
+                    color: Colors.white,
+                    borderRadius: BorderRadius.circular(15),
+                    boxShadow: [
+                      BoxShadow(
+                        color: Colors.black.withOpacity(0.1),
+                        blurRadius: 10,
+                        spreadRadius: 2,
+                      ),
+                    ],
+                  ),
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      const Icon(
+                        Icons.error_outline,
+                        size: 64,
+                        color: Colors.red,
+                      ),
+                      const SizedBox(height: 16),
+                      const Text(
+                        "Failed to load events",
+                        style: TextStyle(
+                          fontSize: 18,
+                          fontWeight: FontWeight.bold,
+                          color: Colors.red,
+                        ),
+                      ),
+                      const SizedBox(height: 8),
+                      Text(
+                        _errorMessage ?? 'Unknown error occurred',
+                        textAlign: TextAlign.center,
+                        style: TextStyle(
+                          fontSize: 14,
+                          color: Colors.grey.shade700,
+                        ),
+                      ),
+                      const SizedBox(height: 20),
+                      ElevatedButton.icon(
+                        onPressed: _refreshEvents,
+                        icon: const Icon(Icons.refresh),
+                        label: const Text("Try Again"),
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: Colors.deepPurple,
+                          foregroundColor: Colors.white,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ),
           ),
       ],
     );
@@ -446,47 +579,89 @@ class _HomepageState extends State<Homepage> {
             _onEventTapHandler(eventOrList, date);
           },
         ),
-        if (_isLoading)
-          Positioned(
-            bottom: 16,
-            left: 0,
-            right: 0,
-            child: _buildLoadingIndicator(),
+        if (_isLoading || _isRefreshing)
+          Container(
+            color: Colors.black.withOpacity(0.3),
+            child: Center(
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  const CircularProgressIndicator(),
+                  const SizedBox(height: 16),
+                  Text(
+                    _isRefreshing ? 'Refreshing events...' : 'Loading events...',
+                    style: const TextStyle(
+                      color: Colors.white,
+                      fontSize: 16,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        if (_hasError && !_isLoading && !_isRefreshing)
+          Positioned.fill(
+            child: Container(
+              color: Colors.black.withOpacity(0.3),
+              child: Center(
+                child: Container(
+                  padding: const EdgeInsets.all(20),
+                  margin: const EdgeInsets.all(20),
+                  decoration: BoxDecoration(
+                    color: Colors.white,
+                    borderRadius: BorderRadius.circular(15),
+                    boxShadow: [
+                      BoxShadow(
+                        color: Colors.black.withOpacity(0.1),
+                        blurRadius: 10,
+                        spreadRadius: 2,
+                      ),
+                    ],
+                  ),
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      const Icon(
+                        Icons.error_outline,
+                        size: 64,
+                        color: Colors.red,
+                      ),
+                      const SizedBox(height: 16),
+                      const Text(
+                        "Failed to load events",
+                        style: TextStyle(
+                          fontSize: 18,
+                          fontWeight: FontWeight.bold,
+                          color: Colors.red,
+                        ),
+                      ),
+                      const SizedBox(height: 8),
+                      Text(
+                        _errorMessage ?? 'Unknown error occurred',
+                        textAlign: TextAlign.center,
+                        style: TextStyle(
+                          fontSize: 14,
+                          color: Colors.grey.shade700,
+                        ),
+                      ),
+                      const SizedBox(height: 20),
+                      ElevatedButton.icon(
+                        onPressed: _refreshEvents,
+                        icon: const Icon(Icons.refresh),
+                        label: const Text("Try Again"),
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: Colors.deepPurple,
+                          foregroundColor: Colors.white,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ),
           ),
       ],
-    );
-  }
-
-  Widget _buildLoadingIndicator() {
-    return Center(
-      child: Container(
-        padding: const EdgeInsets.all(12),
-        decoration: BoxDecoration(
-          color: Colors.white.withOpacity(0.9),
-          borderRadius: BorderRadius.circular(20),
-          boxShadow: [
-            BoxShadow(
-              color: Colors.black.withOpacity(0.1),
-              blurRadius: 10,
-            ),
-          ],
-        ),
-        child: const Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            SizedBox(
-              height: 16,
-              width: 16,
-              child: CircularProgressIndicator(strokeWidth: 2),
-            ),
-            SizedBox(width: 8),
-            Text(
-              "Refreshing...",
-              style: TextStyle(fontSize: 14, fontWeight: FontWeight.w500),
-            ),
-          ],
-        ),
-      ),
     );
   }
 
@@ -495,25 +670,7 @@ class _HomepageState extends State<Homepage> {
     return CalendarControllerProvider(
       controller: _eventController,
       child: Scaffold(
-        appBar: AppBar(
-          title: const Text(
-            "My Professional Calendar",
-            style: TextStyle(fontWeight: FontWeight.bold),
-          ),
-          backgroundColor: Colors.deepPurple,
-          actions: [
-            IconButton(
-              icon: Icon(
-                _isMonthView ? Icons.calendar_view_day : Icons.calendar_month,
-              ),
-              onPressed: () {
-                setState(() => _isMonthView = !_isMonthView);
-              },
-              tooltip:
-              _isMonthView ? 'Switch to Day View' : 'Switch to Month View',
-            ),
-          ],
-        ),
+
         body: AnimatedSwitcher(
           duration: const Duration(milliseconds: 300),
           child: _isMonthView ? _buildMonthView() : _buildDayView(),
@@ -521,7 +678,7 @@ class _HomepageState extends State<Homepage> {
         floatingActionButton: Column(
           mainAxisAlignment: MainAxisAlignment.end,
           children: [
-            if (_isLoading)
+            if (_isLoading && !_isRefreshing && !_hasError)
               Container(
                 margin: const EdgeInsets.only(bottom: 16),
                 padding:
@@ -552,6 +709,14 @@ class _HomepageState extends State<Homepage> {
         ),
       ),
     );
+  }
+
+  @override
+  void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    _monthScrollController.dispose();
+    _dayScrollController.dispose();
+    super.dispose();
   }
 }
 

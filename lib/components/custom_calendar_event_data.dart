@@ -1,8 +1,5 @@
-
 import 'package:calendar_view/calendar_view.dart';
 import 'package:flutter/material.dart';
-
-import '../event-notif.dart';
 
 class AdditionalItem {
   final String name;
@@ -23,14 +20,59 @@ class AdditionalItem {
       price: (map['price'] ?? 0.0) as double,
     );
   }
+}
 
-  AdditionalItem copyWith({
-    String? name,
-    double? price,
+class EventNotification {
+  final bool enabled;
+  final int minutesBefore;
+  final String? customMessage;
+
+  const EventNotification({
+    this.enabled = false,
+    this.minutesBefore = 60,
+    this.customMessage,
+  });
+
+  String get displayText {
+    if (minutesBefore < 60) {
+      return '$minutesBefore minute${minutesBefore == 1 ? '' : 's'} before';
+    } else if (minutesBefore < 1440) {
+      final hours = minutesBefore ~/ 60;
+      return '$hours hour${hours == 1 ? '' : 's'} before';
+    } else {
+      final days = minutesBefore ~/ 1440;
+      return '$days day${days == 1 ? '' : 's'} before';
+    }
+  }
+
+  Map<String, dynamic> toMap() {
+    return {
+      'enabled': enabled,
+      'minutesBefore': minutesBefore,
+      'customMessage': customMessage,
+    };
+  }
+
+  factory EventNotification.fromMap(Map<String, dynamic>? map) {
+    if (map == null) {
+      return const EventNotification(enabled: false, minutesBefore: 60);
+    }
+    return EventNotification(
+      enabled: (map['enabled'] ?? false) as bool,
+      minutesBefore: (map['minutesBefore'] ?? 60) as int,
+      customMessage: map['customMessage'] as String?,
+    );
+  }
+
+  EventNotification copyWith({
+    bool? enabled,
+    int? minutesBefore,
+    String? customMessage,
   }) {
-    return AdditionalItem(
-      name: name ?? this.name,
-      price: price ?? this.price,
+    return EventNotification(
+      enabled: enabled ?? this.enabled,
+      minutesBefore: minutesBefore ?? this.minutesBefore,
+      customMessage: customMessage ?? this.customMessage,
     );
   }
 }
@@ -49,21 +91,21 @@ class CustomCalendarEventData extends CalendarEventData {
     String? description,
     DateTime? startTime,
     DateTime? endTime,
-    Color? color, // We accept nullable color
+    Color? color,
     this.money,
     this.diesel,
     this.additionalItems = const [],
     EventNotification? notification,
-  }) : 
+  }) :
         notification = notification ?? const EventNotification(enabled: false, minutesBefore: 60),
         super(
-          date: date,
-          title: title,
-          description: description,
-          startTime: startTime,
-          endTime: endTime,
-          color: color ?? Colors.blue, // Provide default color when null
-        ) {
+        date: date,
+        title: title,
+        description: description,
+        startTime: startTime,
+        endTime: endTime,
+        color: color ?? Colors.blue,
+      ) {
     assert(id.isNotEmpty, 'ID cannot be empty');
   }
 
@@ -106,12 +148,10 @@ class CustomCalendarEventData extends CalendarEventData {
   }
 
   factory CustomCalendarEventData.fromMap(Map<String, dynamic> map) {
-    // Safe access to all map values
-    final additionalItemsData = map['additionalItems'];
     List<AdditionalItem> additionalItems = [];
-    
-    if (additionalItemsData is List) {
-      additionalItems = additionalItemsData.map((item) {
+
+    if (map['additionalItems'] is List) {
+      additionalItems = (map['additionalItems'] as List).map((item) {
         if (item is Map<String, dynamic>) {
           return AdditionalItem.fromMap(item);
         }
@@ -119,7 +159,6 @@ class CustomCalendarEventData extends CalendarEventData {
       }).toList();
     }
 
-    // Handle color safely
     Color? color;
     if (map['color'] != null) {
       try {
@@ -134,10 +173,10 @@ class CustomCalendarEventData extends CalendarEventData {
       date: DateTime.fromMillisecondsSinceEpoch((map['date'] ?? 0) as int),
       title: (map['title'] ?? 'No Title') as String,
       description: map['description'] as String?,
-      startTime: map['startTime'] != null 
+      startTime: map['startTime'] != null
           ? DateTime.fromMillisecondsSinceEpoch(map['startTime'] as int)
           : null,
-      endTime: map['endTime'] != null 
+      endTime: map['endTime'] != null
           ? DateTime.fromMillisecondsSinceEpoch(map['endTime'] as int)
           : null,
       color: color,
@@ -147,6 +186,4 @@ class CustomCalendarEventData extends CalendarEventData {
       notification: EventNotification.fromMap(map['notification'] as Map<String, dynamic>?),
     );
   }
-
- 
 }

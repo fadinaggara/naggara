@@ -98,15 +98,19 @@ class _UpcomingEventsContentState extends State<_UpcomingEventsContent> {
   }
 
   Future<void> _loadPastEventsCount() async {
-    final pastEvents = await widget.databaseProvider.getPastEvents();
-    setState(() {
-      _pastEventsCount = pastEvents.length;
-    });
+    try {
+      final pastEvents = await widget.databaseProvider.getPastEvents();
+      setState(() {
+        _pastEventsCount = pastEvents.length;
+      });
+    } catch (e) {
+      print('Error loading past events count: $e');
+    }
   }
 
   Future<void> _onRefresh() async {
     try {
-      // Use EventManager to refresh
+      // Refresh events
       await _eventManager.refreshEvents(context, widget.controller);
 
       // Get updated events
@@ -131,13 +135,6 @@ class _UpcomingEventsContentState extends State<_UpcomingEventsContent> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(
-        title: const Text(
-          "Upcoming Events",
-          style: TextStyle(fontWeight: FontWeight.bold),
-        ),
-        backgroundColor: Colors.deepPurple,
-      ),
       body: _buildBody(),
     );
   }
@@ -321,7 +318,8 @@ class _UpcomingEventsContentState extends State<_UpcomingEventsContent> {
     return events.fold(0.0, (total, event) => total + (event.grandTotal));
   }
 
-  Future<void> _editEvent(BuildContext context, CustomCalendarEventData event) async {
+  Future<void> _editEvent(
+      BuildContext context, CustomCalendarEventData event) async {
     final updatedEvent = await showDialog<CustomCalendarEventData>(
       context: context,
       builder: (_) => AddEventDialog(existingEvent: event),
@@ -329,7 +327,7 @@ class _UpcomingEventsContentState extends State<_UpcomingEventsContent> {
 
     if (updatedEvent != null) {
       try {
-        // Use EventManager to update
+        // Update using EventManager
         await _eventManager.updateEvent(context, event, updatedEvent, widget.controller);
 
         // Update local list
@@ -365,7 +363,7 @@ class _UpcomingEventsContentState extends State<_UpcomingEventsContent> {
           TextButton(
             onPressed: () async {
               try {
-                // Use EventManager to delete
+                // Delete using EventManager
                 await _eventManager.deleteEvent(context, event, widget.controller);
 
                 // Update local list
@@ -395,7 +393,6 @@ class _UpcomingEventsContentState extends State<_UpcomingEventsContent> {
   }
 }
 
-// Keep your existing _UpcomingEventCard and _InfoChip classes
 class _UpcomingEventCard extends StatelessWidget {
   final CustomCalendarEventData event;
   final VoidCallback onEdit;

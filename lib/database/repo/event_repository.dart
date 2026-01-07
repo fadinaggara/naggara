@@ -1,7 +1,7 @@
 import 'dart:convert';
 import 'dart:ui';
 
-import '../../event-notif.dart';
+import '../../event-notif.dart' hide EventNotification;
 import '../database_helper.dart';
 import '../models/db_event.dart';
 import 'package:scheduladi/components/custom_calendar_event_data.dart';

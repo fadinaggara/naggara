@@ -114,11 +114,7 @@ class _StatsPageState extends State<StatsPage> {
         final totalStats = _calculateTotalStats(events);
 
         return Scaffold(
-          appBar: AppBar(
-            title: const Text("Statistics"),
-            backgroundColor: Colors.deepPurple,
-            elevation: 0,
-          ),
+
           body: Stack(
             children: [
               SingleChildScrollView(
